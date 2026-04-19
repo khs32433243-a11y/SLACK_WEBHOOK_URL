@@ -27,7 +27,10 @@ class WeekSnapshot(BaseModel):
         if self.total_revenue == 0: return 0
         return (self.total_profit / self.total_revenue) * 100
 
-def decompose_margin_gap(current: WeekSnapshot, target_margin: float = 13.0) -> Dict:
+def full_decomposition(current: WeekSnapshot, target_margin: float = 13.0) -> Dict:
+    """
+    수익률 분석 핵심 함수 (이름을 main.py와 맞춤)
+    """
     total_rev = current.total_revenue
     actual_margin = current.profit_margin
     total_ads = sum(s.ad_cost for s in current.stores)
