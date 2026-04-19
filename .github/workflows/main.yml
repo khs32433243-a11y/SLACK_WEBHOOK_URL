@@ -1,0 +1,24 @@
+name: Weekly Profit Report
+
+on:
+  schedule:
+    - cron: '0 21 * * 0' # 매주 월요일 아침 6시 (KST)
+  workflow_dispatch: # 수동 실행 버튼 활성화
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install pandas anthropic psycopg2-binary pydantic
+      - name: Run Report
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: python main.py
