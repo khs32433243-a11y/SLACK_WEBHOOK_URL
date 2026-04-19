@@ -1,15 +1,14 @@
-"""Weekly profit margin report — orchestrator.
+"""Weekly profit margin report — orchestrator (Excel MVP version).
 
-Flow:
-    1. Figure out the ISO week to report on (last completed week).
-    2. Fetch raw daily × store rows for that week AND the prior week.
-    3. **Quality gate** — inspect raw data. If critical issues, post alert
-       and ABORT. If warnings only, proceed but flag in final report.
-    4. Aggregate into weekly snapshots (company + per-store).
-    5. Run 4-level decomposition (pure, no I/O).
-    6. Archive the raw decomposition JSON for history.
-    7. Hand to Claude → Korean markdown narrative.
-    8. Publish to Slack.
+Reads data/latest.xlsx (committed weekly by the operator), runs the quality
+gate, then the 4-level decomposition, then the LLM narrative, then posts to
+Slack.
+
+Env vars required:
+    ANTHROPIC_API_KEY   — Claude API
+    SLACK_WEBHOOK_URL   — Incoming Webhook
+Optional:
+    DATA_FILE           — path to xlsx (default: data/latest.xlsx)
 """
 
 from __future__ import annotations
@@ -19,8 +18,6 @@ import sys
 import traceback
 from datetime import date
 from pathlib import Path
-
-import psycopg2
 
 from data import (fetch_raw_weeks, aggregate_week, aggregate_stores,
                   previous_iso_week)
@@ -34,43 +31,54 @@ from publish import post_to_slack, post_failure_alert
 ROOT = Path(__file__).resolve().parent
 ARCHIVE = ROOT / "archive"
 PROMPTS = ROOT / "prompts"
+DEFAULT_DATA = ROOT / "data" / "latest.xlsx"
+
+
+def _pick_weeks(raw_df):
+    """Pick the two most recent complete ISO weeks present in the file.
+
+    Simpler than hardcoding to 'last week' — operator just drops the
+    latest export and the pipeline figures out which weeks to report.
+    """
+    weeks = sorted({(int(y), int(w)) for y, w
+                    in raw_df[['iso_year', 'iso_week']].values}, reverse=True)
+    if len(weeks) < 2:
+        raise ValueError(f"주차가 2개 미만: {weeks}. 전주 비교 불가.")
+    return weeks[1], weeks[0]   # (prev, curr)
 
 
 def run() -> None:
-    today = date.today()
-    curr_year, curr_week = previous_iso_week(today, offset_weeks=1)
-    prev_year, prev_week = previous_iso_week(today, offset_weeks=2)
-    curr_label = f"{curr_year}-W{curr_week:02d}"
-    prev_label = f"{prev_year}-W{prev_week:02d}"
+    data_path = Path(os.environ.get("DATA_FILE", DEFAULT_DATA))
 
-    # --- 1. Fetch raw (single query for both weeks) ---
-    with psycopg2.connect(os.environ["DATABASE_URL"]) as conn:
-        raw = fetch_raw_weeks(conn, [(prev_year, prev_week), (curr_year, curr_week)])
-
-    if raw.empty:
+    # --- 1. Load all weeks from the file (filter by recent only) ---
+    full_df = fetch_raw_weeks(data_path, weeks=[])   # empty list = all weeks
+    if full_df.empty:
         post_to_slack(
-            title=f"⚠️ {curr_label} 데이터 없음",
-            body="DB에서 raw 데이터를 찾을 수 없습니다. 수집 파이프라인 점검 요망.",
+            title="⚠️ 데이터 없음",
+            body=f"`{data_path}` 에서 유효한 지점 행을 찾을 수 없습니다.",
         )
         return
 
-    # --- 2. Quality gate ---
-    issues = check_week_quality(raw, curr_year, curr_week)
+    (prev_year, prev_week), (curr_year, curr_week) = _pick_weeks(full_df)
+    curr_label = f"{curr_year}-W{curr_week:02d}"
+    prev_label = f"{prev_year}-W{prev_week:02d}"
+
+    # --- 2. Quality gate (current week) ---
+    issues = check_week_quality(full_df, curr_year, curr_week)
     if has_critical_issues(issues):
         post_to_slack(
             title=f"⚠️ {curr_label} 품질 게이트 실패 — 리포트 건너뜀",
             body=format_issues_for_slack(issues, curr_label),
         )
-        # Also archive the issues for audit
         ARCHIVE.mkdir(exist_ok=True)
         (ARCHIVE / f"{curr_label}_quality_fail.json").write_text(
-            json.dumps([i.__dict__ for i in issues], ensure_ascii=False, indent=2)
+            json.dumps([i.__dict__ for i in issues], ensure_ascii=False, indent=2),
+            encoding="utf-8",
         )
-        print(f"Critical issues found for {curr_label}. Aborting.")
         return
 
-    # Also check prev week — if prev is bad, comparison is meaningless
-    prev_issues = check_week_quality(raw, prev_year, prev_week)
+    # --- 3. Quality gate (prev week, for valid comparison) ---
+    prev_issues = check_week_quality(full_df, prev_year, prev_week)
     if has_critical_issues(prev_issues):
         post_to_slack(
             title=f"⚠️ 전주({prev_label}) 품질 이슈 — {curr_label} 비교 불가",
@@ -80,17 +88,16 @@ def run() -> None:
         return
 
     warnings_note = ""
-    if issues:  # warnings only
-        warnings_note = (f"\n\n*데이터 품질 경고 {len(issues)}건* "
-                        f"(critical 아님, 분해는 진행)")
+    if issues:
+        warnings_note = (f"\n\n_데이터 품질 경고 {len(issues)}건. "
+                        f"critical 아님 — 분해는 진행._")
 
-    # --- 3. Aggregate ---
-    curr_agg = aggregate_week(raw, curr_year, curr_week, exclude_kangbuk=True)
-    prev_agg = aggregate_week(raw, prev_year, prev_week, exclude_kangbuk=True)
-    curr_stores = aggregate_stores(raw, curr_year, curr_week)
-    prev_stores = aggregate_stores(raw, prev_year, prev_week)
+    # --- 4. Aggregate + Decompose ---
+    curr_agg = aggregate_week(full_df, curr_year, curr_week, exclude_kangbuk=True)
+    prev_agg = aggregate_week(full_df, prev_year, prev_week, exclude_kangbuk=True)
+    curr_stores = aggregate_stores(full_df, curr_year, curr_week)
+    prev_stores = aggregate_stores(full_df, prev_year, prev_week)
 
-    # --- 4. Decompose ---
     decomposition = full_decomposition(prev_agg, curr_agg, prev_stores, curr_stores)
     decomposition["quality_warnings"] = [i.__dict__ for i in issues]
 
@@ -130,3 +137,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
