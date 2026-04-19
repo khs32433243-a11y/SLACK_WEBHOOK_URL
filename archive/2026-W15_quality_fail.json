@@ -1,0 +1,72 @@
+[
+  {
+    "severity": "critical",
+    "date": "2026-04-09",
+    "store": "강남점",
+    "column": "총플랫폼비(광고비,쿠폰비포함)",
+    "message": "0원 (정산 미반영 의심)"
+  },
+  {
+    "severity": "critical",
+    "date": "2026-04-09",
+    "store": "강동점",
+    "column": "총플랫폼비(광고비,쿠폰비포함)",
+    "message": "0원 (정산 미반영 의심)"
+  },
+  {
+    "severity": "critical",
+    "date": "2026-04-09",
+    "store": "강북점",
+    "column": "총플랫폼비(광고비,쿠폰비포함)",
+    "message": "0원 (정산 미반영 의심)"
+  },
+  {
+    "severity": "critical",
+    "date": "2026-04-09",
+    "store": "관악점",
+    "column": "총플랫폼비(광고비,쿠폰비포함)",
+    "message": "0원 (정산 미반영 의심)"
+  },
+  {
+    "severity": "critical",
+    "date": "2026-04-09",
+    "store": "금천점",
+    "column": "총플랫폼비(광고비,쿠폰비포함)",
+    "message": "0원 (정산 미반영 의심)"
+  },
+  {
+    "severity": "critical",
+    "date": "2026-04-09",
+    "store": "송파점",
+    "column": "총플랫폼비(광고비,쿠폰비포함)",
+    "message": "0원 (정산 미반영 의심)"
+  },
+  {
+    "severity": "critical",
+    "date": "2026-04-09",
+    "store": "양천점",
+    "column": "총플랫폼비(광고비,쿠폰비포함)",
+    "message": "0원 (정산 미반영 의심)"
+  },
+  {
+    "severity": "critical",
+    "date": "2026-04-09",
+    "store": "영등포점",
+    "column": "총플랫폼비(광고비,쿠폰비포함)",
+    "message": "0원 (정산 미반영 의심)"
+  },
+  {
+    "severity": "critical",
+    "date": "2026-04-09",
+    "store": "은평점",
+    "column": "총플랫폼비(광고비,쿠폰비포함)",
+    "message": "0원 (정산 미반영 의심)"
+  },
+  {
+    "severity": "critical",
+    "date": "2026-04-09",
+    "store": "중랑점",
+    "column": "총플랫폼비(광고비,쿠폰비포함)",
+    "message": "0원 (정산 미반영 의심)"
+  }
+]
