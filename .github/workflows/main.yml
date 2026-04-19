@@ -1,24 +1,45 @@
-name: Weekly Profit Report
+name: Weekly profit report
 
 on:
   schedule:
-    - cron: '0 21 * * 0' # 매주 월요일 아침 6시 (KST)
-  workflow_dispatch: # 수동 실행 버튼 활성화
+    - cron: "0 21 * * 0"
+  push:
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
   report:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
     steps:
-      - uses: actions/checkout@v3
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
+
       - name: Install dependencies
-        run: pip install pandas anthropic psycopg2-binary pydantic
-      - name: Run Report
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install anthropic pandas openpyxl
+
+      - name: Run weekly report
+        run: python main.py
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-        run: python main.py
+
+      - name: Commit archive
+        run: |
+          git config user.email "bot@blitz.local"
+          git config user.name "report-bot"
+          git add archive/ || true
+          if git diff --staged --quiet; then
+            echo "No archive changes"
+          else
+            git commit -m "archive: $(date -u +%Y-W%V)"
+            git push
+          fi
