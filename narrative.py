@@ -1,18 +1,52 @@
-import anthropic
-import os
+"""LLM narrative generator.
 
-def generate_narrative(analysis: dict) -> str:
+Takes the structured decomposition dict and produces a Korean markdown report
+suitable for direct posting to Slack.
+"""
+
+import json
+import os
+from pathlib import Path
+
+import anthropic
+
+
+DEFAULT_MODEL = "claude-opus-4-7"
+
+
+def generate_narrative(
+    decomposition: dict,
+    prompt_template: Path,
+    brand_context: Path,
+    model: str = DEFAULT_MODEL,
+    max_tokens: int = 2000,
+) -> str:
+    """Render a weekly report from the decomposition.
+
+    The system prompt carries the brand-manager rules (강북점 취급, 플랫폼비 중복
+    금지 등). The user prompt carries the task + the data.
     """
-    AI 리포트 생성 함수 (이름을 main.py와 맞춤)
-    """
-    client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
-    
-    # 분석 데이터를 요약하여 프롬프트 작성
-    prompt = f"다음 주간 수익률 분석 데이터를 바탕으로 마케팅 인사이트 리포트를 작성해줘: {analysis}"
-    
-    message = client.messages.create(
-        model="claude-3-5-sonnet-20240620",
-        max_tokens=1500,
-        messages=[{"role": "user", "content": prompt}]
+    client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+
+    rules = brand_context.read_text(encoding="utf-8")
+    task = prompt_template.read_text(encoding="utf-8")
+
+    system = (
+        "You are a senior data analyst for Blitz Dynamics, a 10-store delivery "
+        "kitchen operator. Respond in Korean. Follow the brand-manager rules "
+        "strictly.\n\n"
+        f"<brand_manager_rules>\n{rules}\n</brand_manager_rules>"
     )
-    return message.content[0].text
+    user_msg = task.replace(
+        "{{DATA}}",
+        json.dumps(decomposition, ensure_ascii=False, indent=2, default=str),
+    )
+
+    resp = client.messages.create(
+        model=model,
+        max_tokens=max_tokens,
+        system=system,
+        messages=[{"role": "user", "content": user_msg}],
+    )
+    # Concatenate text blocks
+    return "".join(b.text for b in resp.content if b.type == "text")
