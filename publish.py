@@ -22,6 +22,7 @@ def _split_into_blocks(body: str) -> list[dict]:
             blocks.append({"type": "section",
                            "text": {"type": "mrkdwn", "text": remaining}})
             break
+        # Split on the last blank line before the limit
         cut = remaining.rfind("\n\n", 0, _BLOCK_CHAR_LIMIT)
         if cut == -1:
             cut = _BLOCK_CHAR_LIMIT
